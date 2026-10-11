@@ -1,14 +1,12 @@
-# -*- coding: utf-8 -*-
 import os
 import sys
 
-# Fix Windows console encoding so all print() calls work without crashing
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 import joblib
 import matplotlib
-matplotlib.use("Agg")           # MUST be before pyplot import -- no GUI needed
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from sklearn.metrics import (
     accuracy_score, precision_score,
@@ -27,7 +25,6 @@ os.makedirs(REPORTS_DIR, exist_ok=True)
 
 
 def evaluate():
-    # -- Load everything saved by train.py ----------------------
     all_models = joblib.load(os.path.join(MODELS_DIR, "all_models.pkl"))
     test_data  = joblib.load(os.path.join(MODELS_DIR, "test_data.pkl"))
     load_encoders()
@@ -58,11 +55,9 @@ def evaluate():
         print(f"  Recall    : {rec*100:.2f}%")
         print(f"  F1-Score  : {f1*100:.2f}%")
 
-    # -- Side-by-side bar chart of all metrics -------------------
     print("\n[INFO] Saving metrics chart...")
     _plot_metrics(summary)
 
-    # -- Confusion matrix for best model only --------------------
     best_name = max(summary, key=lambda n: summary[n]["Accuracy"])
     best_model = all_models[best_name]
     _plot_confusion(best_model, X_test, y_test, best_name)
@@ -73,7 +68,6 @@ def evaluate():
 
 
 def _plot_metrics(summary):
-    """Bar chart comparing Accuracy, Precision, Recall, F1 across all models."""
     import numpy as np
 
     metrics  = ["Accuracy", "Precision", "Recall", "F1-Score"]
@@ -108,14 +102,12 @@ def _plot_metrics(summary):
 
 
 def _plot_confusion(model, X_test, y_test, model_name):
-    """Confusion matrix for the best model (top-10 teams for readability)."""
     from preprocess import encoders, TARGET_COL
     import numpy as np
 
     preds  = model.predict(X_test)
     le     = encoders[TARGET_COL]
 
-    # Keep only top 10 most-frequent teams in test set for readable matrix
     unique, counts = np.unique(y_test, return_counts=True)
     top10 = unique[np.argsort(counts)[::-1][:10]]
 
@@ -140,8 +132,5 @@ def _plot_confusion(model, X_test, y_test, model_name):
     print(f"[INFO] Confusion matrix ->  {out}")
 
 
-# -------------------------------------------------------------
-#  Run  ->  python src/evaluate.py
-# -------------------------------------------------------------
 if __name__ == "__main__":
     evaluate()

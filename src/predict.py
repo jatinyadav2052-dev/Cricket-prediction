@@ -1,10 +1,8 @@
-# -*- coding: utf-8 -*-
 import os
 import sys
 import joblib
 import pandas as pd
 
-# Fix Windows console encoding so all print() calls work without crashing
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
@@ -18,13 +16,9 @@ MODEL_PATH = os.path.join(MODELS_DIR, "best_model.pkl")
 
 
 def _encode_input(input_df):
-    """
-    Encode only the categorical columns using saved LabelEncoders.
-    h2h_diff and home_adv are already numeric -- they are left as-is.
-    """
     from preprocess import encoders
     enc = input_df.copy()
-    for col in CAT_COLS:          # <-- only categorical cols, NOT h2h_diff / home_adv
+    for col in CAT_COLS:
         le  = encoders[col]
         val = str(enc.at[0, col])
         enc[col] = int(le.transform([val])[0]) if val in le.classes_ else -1
@@ -32,29 +26,19 @@ def _encode_input(input_df):
 
 
 def _build_input_row(team1, team2, toss_winner, toss_decision, venue):
-    """
-    Build the raw one-row DataFrame with all FEATURE_COLS,
-    computing numeric features from the saved team_stats.
-
-    team_stats is loaded from models/team_stats.pkl by load_model(),
-    guaranteeing we use the exact same values as during training.
-    """
     from preprocess import team_stats
 
     win_rates = team_stats.get("win_rates", {})
     h2h_wins  = team_stats.get("h2h_wins",  {})
     h2h_total = team_stats.get("h2h_total", {})
 
-    # Overall win rates (default 0.5 = unknown team)
     t1_wr = win_rates.get(team1, 0.5)
     t2_wr = win_rates.get(team2, 0.5)
 
-    # Head-to-head win rate for team1 against team2
     total = h2h_total.get((team1, team2), 0)
     wins  = h2h_wins.get((team1, team2), 0)
     h2h_wr = wins / total if total > 0 else 0.5
 
-    # Home advantage flag
     home_adv = 1 if HOME_VENUES.get(team1) == venue else 0
 
     return pd.DataFrame([{
@@ -72,28 +56,13 @@ def _build_input_row(team1, team2, toss_winner, toss_decision, venue):
 
 
 def load_model():
-    """Load the best model, label encoders, and team stats."""
     model = joblib.load(MODEL_PATH)
     load_encoders()
-    load_team_stats()   # load win rates & h2h so _build_input_row works
+    load_team_stats()
     return model
 
 
 def predict_winner(team1, team2, toss_winner, toss_decision, venue):
-    """
-    Predict the winner for a new match.
-
-    Parameters
-    ----------
-    team1, team2   : str  e.g. "Mumbai Indians", "Chennai Super Kings"
-    toss_winner    : str  must be team1 or team2
-    toss_decision  : str  "bat" or "field"
-    venue          : str  e.g. "Wankhede Stadium"
-
-    Returns
-    -------
-    str -- predicted winning team name
-    """
     model = load_model()
     from preprocess import encoders
 
@@ -105,15 +74,6 @@ def predict_winner(team1, team2, toss_winner, toss_decision, venue):
 
 
 def predict_with_proba(team1, team2, toss_winner, toss_decision, venue):
-    """
-    Same as predict_winner but also returns win probabilities for every team.
-
-    Returns
-    -------
-    winner     : str
-    proba_dict : dict  { team_name: probability% }  sorted descending
-    """
-    # Load model + encoders once -- no redundant second call
     model = load_model()
     from preprocess import encoders
 
@@ -131,15 +91,11 @@ def predict_with_proba(team1, team2, toss_winner, toss_decision, venue):
     return winner, proba_dict
 
 
-# -------------------------------------------------------------
-#  Interactive demo  ->  python src/predict.py
-# -------------------------------------------------------------
 if __name__ == "__main__":
     print("\n" + "="*55)
     print("  IPL MATCH WINNER PREDICTOR")
     print("="*55)
 
-    # -- Change these values to predict any match ---------------
     team1         = "Mumbai Indians"
     team2         = "Chennai Super Kings"
     toss_winner   = "Mumbai Indians"

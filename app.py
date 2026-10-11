@@ -1,8 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Cricket Match Winner Prediction - Streamlit App
-Run: python -m streamlit run app.py
-"""
 
 import os
 import sys
@@ -14,25 +9,19 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-# ─────────────────────────────────────────────────────────────
-#  ABSOLUTE PATHS  (works regardless of where streamlit is run)
-# ─────────────────────────────────────────────────────────────
 BASE_DIR         = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH       = os.path.join(BASE_DIR, "models", "best_model.pkl")
 ENCODERS_PATH    = os.path.join(BASE_DIR, "models", "label_encoders.pkl")
 TEAM_STATS_PATH  = os.path.join(BASE_DIR, "models", "team_stats.pkl")
 
-# Categorical columns (go through LabelEncoder)
 CAT_COLS = ["team1", "team2", "toss_winner", "toss_decision", "venue"]
 
-# All feature columns the model expects (must match preprocess.py FEATURE_COLS)
 FEATURE_COLS = [
     "team1", "team2", "toss_winner", "toss_decision", "venue",
     "team1_win_rate", "team2_win_rate", "win_rate_diff",
     "h2h_win_rate", "home_adv",
 ]
 
-# Home venue mapping (must match preprocess.py HOME_VENUES)
 HOME_VENUES = {
     "Chennai Super Kings"        : "MA Chidambaram Stadium, Chepauk",
     "Deccan Chargers"            : "Rajiv Gandhi International Stadium, Uppal",
@@ -56,9 +45,6 @@ HOME_VENUES = {
 }
 
 
-# ─────────────────────────────────────────────────────────────
-#  CACHED LOADERS  (only read from disk once per session)
-# ─────────────────────────────────────────────────────────────
 @st.cache_resource(show_spinner="Loading model...")
 def load_model():
     return joblib.load(MODEL_PATH)
@@ -74,29 +60,19 @@ def load_team_stats():
     return joblib.load(TEAM_STATS_PATH)
 
 
-# ─────────────────────────────────────────────────────────────
-#  PREDICTION HELPER
-# ─────────────────────────────────────────────────────────────
 def encode_input(raw: dict, encoders: dict) -> pd.DataFrame:
-    """
-    Build the model input row:
-    - Label-encode the 5 categorical columns
-    - Pass numeric features (win rates, h2h, home_adv) through as-is
-    """
     row = {}
-    # Categorical columns -> label encode
+    
     for col in CAT_COLS:
         le  = encoders[col]
         val = str(raw[col])
         row[col] = int(le.transform([val])[0]) if val in le.classes_ else -1
-    # Numeric columns -> copy directly
     for col in ["team1_win_rate", "team2_win_rate", "win_rate_diff", "h2h_win_rate", "home_adv"]:
         row[col] = raw[col]
-    return pd.DataFrame([row])[FEATURE_COLS]   # keep correct column order
+    return pd.DataFrame([row])[FEATURE_COLS]
 
-
+ 
 def build_raw_input(team1, team2, toss_winner, toss_decision, venue, team_stats):
-    """Compute all numeric features from saved team_stats and return a raw dict."""
     win_rates = team_stats.get("win_rates", {})
     h2h_wins  = team_stats.get("h2h_wins",  {})
     h2h_total = team_stats.get("h2h_total", {})
@@ -122,38 +98,17 @@ def build_raw_input(team1, team2, toss_winner, toss_decision, venue, team_stats)
 
 
 def predict(raw: dict, model, encoders: dict, team1: str, team2: str):
-    """
-    Run the model and return a head-to-head result for ONLY team1 vs team2.
-
-    Steps:
-    1. Encode the input and call predict_proba() to get probabilities for
-       all 19 classes.
-    2. Pull out only the probabilities for team1 and team2.
-    3. Normalize: each team's probability / (team1_prob + team2_prob)
-       so they add up to 100%.
-    4. Winner = whichever team has the higher normalized probability.
-
-    Returns
-    -------
-    winner     : str   -- team1 or team2 name
-    t1_pct     : float -- normalized probability for team1 [0.0, 1.0]
-    t2_pct     : float -- normalized probability for team2 [0.0, 1.0]
-    """
     X = encode_input(raw, encoders)
 
-    # Full probability array across all 19 classes
     proba      = model.predict_proba(X)[0]
     all_teams  = encoders["winner"].inverse_transform(model.classes_)
     proba_map  = dict(zip(all_teams, proba))
 
-    # Extract probabilities for only the two playing teams
-    # Default to 0.0 if a team wasn't seen in training (edge case)
     t1_raw = proba_map.get(team1, 0.0)
     t2_raw = proba_map.get(team2, 0.0)
 
-    # Normalize so they sum to 1.0 (head-to-head %, not multi-class slice)
     total  = t1_raw + t2_raw
-    if total == 0:      # safety: should never happen with a trained model
+    if total == 0:
         t1_pct, t2_pct = 0.5, 0.5
     else:
         t1_pct = t1_raw / total
@@ -163,34 +118,25 @@ def predict(raw: dict, model, encoders: dict, team1: str, team2: str):
     return winner, t1_pct, t2_pct
 
 
-# ─────────────────────────────────────────────────────────────
-#  PAGE CONFIG
-# ─────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title = "Cricket Match Winner Prediction",
     page_icon  = "🏏",
     layout     = "centered",
 )
 
-# ─────────────────────────────────────────────────────────────
-#  CUSTOM CSS  – dark premium look
-# ─────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-/* ── Google Font ── */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap');
 
 html, body, [class*="css"] {
     font-family: 'Inter', sans-serif;
 }
 
-/* ── Page background ── */
 .stApp {
     background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
     min-height: 100vh;
 }
 
-/* ── Hero header ── */
 .hero {
     text-align: center;
     padding: 2.5rem 1rem 1.5rem;
@@ -210,7 +156,6 @@ html, body, [class*="css"] {
     margin-top: 0;
 }
 
-/* ── Card (form container) ── */
 .card {
     background: rgba(255, 255, 255, 0.06);
     border: 1px solid rgba(255, 255, 255, 0.12);
@@ -220,7 +165,6 @@ html, body, [class*="css"] {
     margin-bottom: 1.5rem;
 }
 
-/* ── Section labels inside card ── */
 .section-label {
     color: #f9d423;
     font-size: 0.78rem;
@@ -231,7 +175,6 @@ html, body, [class*="css"] {
     margin-top: 1.2rem;
 }
 
-/* ── Result card ── */
 .result-card {
     background: linear-gradient(135deg, rgba(249,212,35,0.15), rgba(255,78,80,0.15));
     border: 1px solid rgba(249,212,35,0.4);
@@ -265,7 +208,6 @@ html, body, [class*="css"] {
     font-weight: 500;
 }
 
-/* ── Confidence bar ── */
 .conf-bar-bg {
     background: rgba(255,255,255,0.1);
     border-radius: 999px;
@@ -280,7 +222,6 @@ html, body, [class*="css"] {
     transition: width 0.8s ease;
 }
 
-/* ── Top-5 prob rows ── */
 .prob-row {
     display: flex;
     align-items: center;
@@ -317,7 +258,6 @@ html, body, [class*="css"] {
     flex-shrink: 0;
 }
 
-/* ── Warning / error boxes ── */
 .warn-box {
     background: rgba(255, 193, 7, 0.15);
     border: 1px solid rgba(255, 193, 7, 0.5);
@@ -337,7 +277,6 @@ html, body, [class*="css"] {
     margin-bottom: 1rem;
 }
 
-/* ── Streamlit widget overrides ── */
 div[data-testid="stSelectbox"] label,
 div[data-testid="stRadio"] label {
     color: #c8d0f0 !important;
@@ -371,9 +310,6 @@ div[data-testid="stSelectbox"] > div:first-child > div {
 """, unsafe_allow_html=True)
 
 
-# ─────────────────────────────────────────────────────────────
-#  LOAD MODEL & ENCODERS  (with graceful error handling)
-# ─────────────────────────────────────────────────────────────
 try:
     model      = load_model()
     encoders   = load_encoders()
@@ -393,17 +329,11 @@ except Exception as e:
     st.stop()
 
 
-# ─────────────────────────────────────────────────────────────
-#  DROPDOWN OPTIONS from encoders
-# ─────────────────────────────────────────────────────────────
 teams          = sorted(encoders["team1"].classes_.tolist())
 venues         = sorted(encoders["venue"].classes_.tolist())
 toss_decisions = sorted(encoders["toss_decision"].classes_.tolist())
 
 
-# ─────────────────────────────────────────────────────────────
-#  HERO HEADER
-# ─────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="hero">
     <h1>🏏 Cricket Match Winner Prediction</h1>
@@ -412,9 +342,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# ─────────────────────────────────────────────────────────────
-#  MATCH DETAILS FORM
-# ─────────────────────────────────────────────────────────────
 st.markdown("<div class='card'>", unsafe_allow_html=True)
 
 st.markdown("<div class='section-label'>⚔️ Teams</div>", unsafe_allow_html=True)
@@ -443,13 +370,9 @@ venue = st.selectbox("Venue", venues, key="venue")
 st.markdown("</div>", unsafe_allow_html=True)
 
 
-# ─────────────────────────────────────────────────────────────
-#  PREDICT BUTTON
-# ─────────────────────────────────────────────────────────────
 predict_btn = st.button("🔮 Predict Winner", use_container_width=True)
 
 if predict_btn:
-    # ── Validation: team1 == team2
     if team1 == team2:
         st.markdown("""
         <div class='warn-box'>
@@ -459,13 +382,11 @@ if predict_btn:
         """, unsafe_allow_html=True)
         st.stop()
 
-    # ── Run prediction ──────────────────────────────────────────
     with st.spinner("Analysing match conditions..."):
         try:
             raw = build_raw_input(
                 team1, team2, toss_winner, toss_decision, venue, team_stats
             )
-            # pass team1 and team2 so predict() can normalize to just those two
             winner, t1_pct, t2_pct = predict(raw, model, encoders, team1, team2)
 
         except Exception as e:
@@ -477,7 +398,6 @@ if predict_btn:
             """, unsafe_allow_html=True)
             st.stop()
 
-    # ── Winner banner ───────────────────────────────────────────
     loser      = team2 if winner == team1 else team1
     conf_pct   = round((t1_pct if winner == team1 else t2_pct) * 100, 1)
     bar_w      = min(int(conf_pct), 100)
@@ -493,7 +413,6 @@ if predict_btn:
     </div>
     """, unsafe_allow_html=True)
 
-    # ── Head-to-head probability display ────────────────────────
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("<div class='section-label'>&#9878; Head-to-Head Win Probability</div>",
                 unsafe_allow_html=True)
@@ -501,7 +420,6 @@ if predict_btn:
     t1_pct_show = round(t1_pct * 100, 1)
     t2_pct_show = round(t2_pct * 100, 1)
 
-    # Team 1 row  (gold bar for winner, blue bar for loser)
     t1_color  = "#f9d423, #ff4e50" if winner == team1 else "#4facfe, #00f2fe"
     t2_color  = "#f9d423, #ff4e50" if winner == team2 else "#4facfe, #00f2fe"
     t1_bold   = "font-weight:800; color:#ffffff;" if winner == team1 else "color:#c8d0f0;"
@@ -511,7 +429,6 @@ if predict_btn:
 
     h2h_html = f"""
     <div style="margin-bottom:1.2rem;">
-        <!-- Team 1 row -->
         <div class="prob-row">
             <div class="prob-team" style="{t1_bold}">{t1_trophy}{team1}</div>
             <div class="prob-bar-bg">
@@ -520,7 +437,6 @@ if predict_btn:
             </div>
             <div class="prob-pct">{t1_pct_show}%</div>
         </div>
-        <!-- Team 2 row -->
         <div class="prob-row">
             <div class="prob-team" style="{t2_bold}">{t2_trophy}{team2}</div>
             <div class="prob-bar-bg">
@@ -533,7 +449,6 @@ if predict_btn:
     """
     st.markdown(h2h_html, unsafe_allow_html=True)
 
-    # ── Match summary (collapsible) ─────────────────────────────
     with st.expander("&#128203; Match Details Summary"):
         summary_data = {
             "Field" : ["Team 1", "Team 2", "Toss Winner", "Toss Decision",
@@ -544,9 +459,6 @@ if predict_btn:
         st.table(pd.DataFrame(summary_data))
 
 
-# ─────────────────────────────────────────────────────────────
-#  FOOTER
-# ─────────────────────────────────────────────────────────────
 st.markdown("""
 <hr style="border:none; border-top:1px solid rgba(255,255,255,0.1); margin: 2rem 0 1rem;">
 <p style="text-align:center; color:#606880; font-size:0.82rem;">
